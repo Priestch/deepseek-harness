@@ -77,7 +77,7 @@ materializeOutsideSymlinks(resolve(stage, 'node_modules'))
 // framework directories contain structural symlinks that are not module-resolution
 // symlinks and must be preserved intact by electron-builder.
 const symlinks = findSymlinks(resolve(stage, 'node_modules')).filter((p) => {
-  const parts = p.split('/')
+  const parts = p.split(/[\\/]/)
   return !parts.includes('.bin') && !(parts[0] === 'electron' && parts[1] === 'dist')
 })
 if (symlinks.length) {

@@ -29,7 +29,7 @@ function createLogger(logFile: string) {
     try {
       // eslint-disable-next-line @typescript-eslint/no-require-imports
       require('fs').appendFileSync(logFile, `${new Date().toISOString()} ${msg}\n`)
-    } catch {}
+    } catch (_fsErr) { /* log-write failures are intentionally discarded to keep the logger non-throwing */ }
     console.log(msg)
   }
 }
