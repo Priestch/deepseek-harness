@@ -1,0 +1,63 @@
+# electron-builder configuration for the DeepSeek Harness desktop client.
+#
+# The app root is a STAGED directory (scripts/stage.mjs assembles it under
+# release/stage): a hoisted, symlink-free production install so the spawned host
+# child resolves every @deepseek-ai/dsh-* package. electron-builder packages that
+# staged root; pnpm's symlinked node_modules never enter asar.
+#
+# Validate locally with an unpacked build first:
+#   pnpm --filter @deepseek-ai/dsh-desktop run stage
+#   pnpm --filter @deepseek-ai/dsh-desktop run dist:dir
+# ...then produce installers with `dist` once the unpacked app boots and serves.
+
+appId: ai.deepseek.harness
+productName: DeepSeek Harness
+copyright: Copyright (c) DeepSeek
+
+directories:
+  app: release/stage
+  output: release/build
+
+# What enters the asar: the Electron main bundle AND node_modules (which we then
+# selectively unpack below). Without node_modules in files, only node_modules gets
+# into asar and dist/ is lost.
+files:
+  - dist/**
+  - package.json
+  - node_modules/**
+
+asar: true
+# Keep node_modules and the host binaries outside asar so the child process can
+# spawn, resolve modules, and read the SPA dist from real paths.
+asarUnpack:
+  - node_modules/**
+  - resources/**
+
+extraResources:
+  # A Node >=22.19 binary shipped alongside the app (optional). If absent, the
+  # launcher falls back to ELECTRON_RUN_AS_NODE / system node. Drop it at
+  # resources/node/<exe> when bundling a known-good Node per platform.
+  - from: ${env:DSH_DESKTOP_NODE_BIN:}
+    to: node
+    filter: ["**/*"]
+
+# No native addons to rebuild: landlock-run is a Linux-only prebuilt executable
+# resolved via optionalDependencies and probes "unusable" when absent.
+npmRebuild: false
+
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - dmg
+win:
+  target:
+    - nsis
+linux:
+  target:
+    - AppImage
+    - deb
+  # executableName defaults to the package name (@deepseek-ai/dsh-desktop), whose
+  # "@" is invalid in AppImage/deb binary paths. Use a clean name.
+  executableName: dsh-desktop
+  maintainer: DeepSeek <dev@deepseek.com>
+  category: Development
