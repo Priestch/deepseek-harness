@@ -74,7 +74,13 @@ materializeOutsideSymlinks(resolve(stage, 'node_modules'))
 
 // asar cannot follow symlinks: verify the staged node_modules is flat. The
 // `.bin` shims (always symlinks, never on the module-resolution path) are fine.
-const symlinks = findSymlinks(resolve(stage, 'node_modules')).filter((p) => !p.split('/').includes('.bin'))
+// `electron/dist` contains the Electron binary bundle; on macOS the .app
+// framework directories contain structural symlinks that are not module-resolution
+// symlinks and must be preserved intact by electron-builder.
+const symlinks = findSymlinks(resolve(stage, 'node_modules')).filter((p) => {
+  const parts = p.split(/[\\/]/)
+  return !parts.includes('.bin') && !(parts[0] === 'electron' && parts[1] === 'dist')
+})
 if (symlinks.length) {
   console.error(
     `stage: staged node_modules contains ${symlinks.length} symlink(s) (e.g. ${symlinks.slice(0, 3).join(', ')}).\n` +
