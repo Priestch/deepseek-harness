@@ -79,7 +79,8 @@ materializeOutsideSymlinks(resolve(stage, 'node_modules'))
 // symlinks and must be preserved intact by electron-builder.
 const symlinks = findSymlinks(resolve(stage, 'node_modules')).filter((p) => {
   const parts = p.split(/[\\/]/)
-  return !parts.includes('.bin') && !(parts[0] === 'electron' && parts[1] === 'dist')
+  // parts[0] is always 'node_modules' (paths are relative to stage).
+  return !parts.includes('.bin') && !(parts[1] === 'electron' && parts[2] === 'dist')
 })
 if (symlinks.length) {
   console.error(
