@@ -24,8 +24,9 @@
 import { execFileSync, spawn } from 'node:child_process'
 import { cpSync, existsSync, lstatSync, readFileSync, readlinkSync, realpathSync, readdirSync, rmSync, writeFileSync } from 'node:fs'
 import { resolve, relative, sep } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const root = resolve(new URL('../../..', import.meta.url).pathname)
+const root = resolve(fileURLToPath(new URL('../../..', import.meta.url)))
 const stage = resolve(root, 'apps/desktop/release/stage')
 
 const mustExist = [

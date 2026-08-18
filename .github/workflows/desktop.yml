@@ -1,0 +1,120 @@
+# Build the DeepSeek Harness desktop client (Electron) installers.
+#
+# The Electron shell under apps/desktop spawns the built `dsh web` host on a
+# loopback port and loads the SPA in a BrowserWindow (see apps/desktop/README.md).
+# This workflow builds the host + SPA, stages a self-contained production closure
+# (scripts/stage.mjs), smoke-tests that the staged host actually boots, then runs
+# electron-builder to produce per-OS installers.
+#
+# CI solves the three things that block local packaging — network (electron
+# binary, node-pty node-gyp headers), cross-platform native modules (built per
+# runner OS), and the engine floor (Node >=22.19, satisfied by the runner's Node
+# 24, which stage's smoke test also spawns the host under).
+#
+# Prerequisites in the committed tree (the workflow assumes these):
+#  - apps/cli/package.json declares @deepseek-ai/cordis-plugin-group directly
+#    (the deploy closure is otherwise incomplete; see fix(cli) commit).
+#  - pnpm-workspace.yaml `allowBuilds` has `electron: true` so pnpm's
+#    strictDepBuilds does not block electron's binary-fetching postinstall.
+#  - pnpm-lock.yaml is committed and consistent (install uses --frozen-lockfile).
+#
+# The stage smoke test and packaging are keyless — they only boot the host HTTP
+# server, never make a model call. A real conversation needs DEEPSEEK_API_KEY at
+# runtime; configure it as a repo/launch secret, not for this build.
+
+name: desktop
+
+on:
+  push:
+    branches:
+      - main
+      - master
+      - "desktop/**"
+      - "feat/desktop-**"
+    tags:
+      - "v*"
+    paths:
+      - "apps/desktop/**"
+      - "apps/cli/**"
+      - "apps/web/**"
+      - "packages/**"
+      - "vendor/**"
+      - "pnpm-workspace.yaml"
+      - "pnpm-lock.yaml"
+      - ".github/workflows/desktop.yml"
+  pull_request:
+    paths:
+      - "apps/desktop/**"
+      - ".github/workflows/desktop.yml"
+  workflow_dispatch:
+    inputs:
+      build_all:
+        description: Build all OS targets (otherwise just the runner OS)
+        required: false
+        default: "true"
+
+# Cancel superseded runs on the same ref; release tags are never canceled.
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: ${{ !startsWith(github.ref, 'refs/tags/') }}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        # version is read from packageManager in package.json (pnpm@11.7.0)
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          # >=24 satisfies the host's ^22.19 || >=24 engine floor; the staged
+          # host smoke test spawns under this same Node.
+          node-version: "24"
+          cache: pnpm
+
+      - name: Install
+        # node-pty (terminal PTY backend) builds via node-gyp here; the runners
+        # ship its toolchain (MSVC on Windows, Xcode CLT on macOS, build-essential
+        # on Linux) and have network for the Node headers.
+        run: pnpm install --frozen-lockfile
+
+      - name: Build host + SPA
+        run: pnpm run build
+
+      - name: Build Electron main
+        run: pnpm --filter @deepseek-ai/dsh-desktop run build
+
+      - name: Stage production closure + smoke-test host boot
+        # Fails loud if the staged host cannot boot (incomplete deploy closure)
+        # before electron-builder runs. Keyless: boots only the HTTP server.
+        run: pnpm --filter @deepseek-ai/dsh-desktop run stage
+
+      - name: Package installers
+        run: pnpm --filter @deepseek-ai/dsh-desktop exec electron-builder
+        env:
+          # GH_TOKEN lets electron-builder query release assets when publishing;
+          # harmless and unused for plain packaging.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-${{ matrix.os }}
+          path: |
+            apps/desktop/release/build/*
+            !apps/desktop/release/build/*-unpacked/**
+          if-no-files-found: error
+          retention-days: 14
